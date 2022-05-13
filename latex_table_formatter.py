@@ -1,5 +1,6 @@
 #######################################################################################
 # Latex table formatter
+# Created by Averil Prost, may 2022
 # 
 # Input : 
 #   - a format file (.py) containing objects (see generic_format.py)
