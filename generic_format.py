@@ -1,93 +1,133 @@
 ##################################################################################
-# format file 
+# format file associated to latex_table_formatter
 # keep a generic version of this file for later use
-#  
-# Syntax : 
-# columns = [
-#     "column name 1", tablecolumn (n° in datafile, "format"),
-#     "column name 2", [
-#         "subcolumn name a" : tablecolumn (n° in datafile, "format"),
-#         "subcolumn name b" : tablecolumn (n° in datafile, "format"),
-#     ],
-#     "column name 3", tablecolumn (n° in datafile, "format"),
-#     ...
-#     "column name n", [
-#         "subcolumn name a" : tablecolumn (n° in datafile, "format"),
-#         ...
-#         "subcolumn name z" : tablecolumn (n° in datafile, "format"),
-#     ],
-# ]
-#
-# datarows : one of the following
-# - ":", "a:", ":b", "a:b" : all / starting from a / skipping last b / starting from a and skipping last b
-# - [a,b,...,o] : list of elements e, with e being
-#       either a number n : pick the corresponding row
-#       or a tuple (a,b)  : pick rows between a and b, both included (can be reversed, like (5,3), or equal, like (42,42))
-# Remarks :
-# - line numbering starts from 0.
-# - the order in the table will follow the order in datarows.
-# - '0:0' is the same as ':'.
-#
-#   The datafile may contain any number of rows, 
-#   as soon as the columns appearing in [columns] exist and share the same data type
-#   1 row = 1 set of different datas (meant to be added during an algo run)
-#
-#   Any code in this file will be executed once, on loading (building datarows for instance)
-#
+# Documentation at the end. 
 ##################################################################################
 
 # do not modify if you don't do it in the main script as well
-def tablecolumn (datacol, format):
+def tablecolumn (datacol, format, source="file", data=[]):
     """
     Inputs : 
-        * datacol   : un entier dans 0, ..., infty, donne le numéro de la colonne de data.txt où sont rangés les données.
-        * format    : chaîne de caractère type "%.3f". 
+        * datacol : integer in 0,1,... what is the number of the column in relative order.
+        * format  : format string, for instance "%.3f". 
+        * source : "file" or "custom"
+        * data : if source == custom, what to put in the table (ugly)
     """
-    col = {"datacol" : datacol, "format" : format}
+    col = {"datacol" : datacol, "format" : format, "source" : source, "data" : data}
     return col
 
-###################################
-# Parameters
-###################################
+#########################
+# source files parameters
+#########################
 
-caption     = "hello world" # Optional (ignore the warning if commented)
-label       = "fig:hw"      # Optional (ignore the warning if commented)
+sources = [] # syntax : [filepath, rows, cols, sep, comment]
+sep="\t"
+comment="#"
+sources.append(["./ltf_data.txt", [0, 4, (3,3)], [":"], sep, comment])
+sources.append(["./ltf_data.txt", [1,1], [":"], sep, comment])
+
+#########################
+# Table parameters
+#########################
 
 # columns = [
-#     "$K_0$", tablecolumn (0, "%s"),
-#     "$TT(s)$", tablecolumn (1, "%.3f"),
-#     "error $\mathcal{L}_1$", [
-#         "absolute", tablecolumn (2, "%.3e"),
-#         "relative", tablecolumn (3, "%.3e"),
-#     ],
-#     "error $\mathcal{L}_2$", [
-#         "absolute", tablecolumn (4, "%.3e"),
-#         "relative", tablecolumn (5, "%.3e"),
-#     ],
-#     "error $\mathcal{L}_{\infty}$", [
-#         "absolute", tablecolumn (6, "%.3e"),
-#         "relative", tablecolumn (7, "%.3e"),
-#     ], 
+#     "this", tablecolumn(0,"%s"), 
+#     "is", [
+#         "a", tablecolumn(1,"%d"), 
+#         "recursive", [
+#             "example", tablecolumn(2,"%.2e"),
+#             "of", [
+#                 "a", tablecolumn(5, "%s"),
+#                 "table", tablecolumn(5, "%.4f"),
+#             ]
+#         ]
+#     ]
 # ]
 
 columns = [
-    "this", tablecolumn(0,"%s"), 
-    "is", [
-        "a", tablecolumn(1,"%d"), 
-        "recursive", [
-            "example", tablecolumn(2,"%.2e"),
-            "of", [
-                "a", tablecolumn(5, "%s"),
-                "table", tablecolumn(5, "%.4f"),
-            ]
-        ]
-    ]
+    "this", [
+        "is", tablecolumn(0,"%s"),
+        "not", tablecolumn(1,"%d"), 
+    ],
+    "a", [
+        "recursive", tablecolumn(2,"%.2e"), 
+        "table", tablecolumn(3, "%s"),
+    ],
+    "wooooh", tablecolumn(0,"%s","custom",["obladi","oblada","life","goes","on"])
 ]
 
-# datarows = "2:2" 
-datarows = [0, 4, 2, (3,3)]
-sep = "\t" # data file separator
+caption     = "hello world" # Optional (ignore the warning if commented)
+label       = "fig:hw"      # Optional (ignore the warning if commented)
+vertical_lines_inside_blocks = True # !! weird in recursive headings
+double_hlines = [1,3] # numbering starts at 0
+
+#########################
+# output parameters 
+#########################
+
+save_as_compilable_tex = False
+save_as_includable_tex = False
+generate_pdf = True
+print_in_terminal = False
+output_filename = "ltf_output"
+verbose = False
 
 ##################################################################################
 #                                                                            End #
 ##################################################################################
+
+"""                        DOCUMENTATION
+
+########################## sources syntax ##########################
+
+Indicates where to look for data. List of raw data files and a few parameters.
+
+* filepath : anything that can fit in open(filepath,"r").
+
+* rows : one of the following
+  - ":", "a:", ":b", "a:b" : all / starting from a / skipping last b / starting 
+        from a and skipping last b rows (a,b in 0,1,...)
+  - [a,b,...,o] : list of elements e, with e being
+        either a number n : pick the corresponding row
+        or a tuple (a,b)  : pick rows between a and b, both included (can be 
+        reversed, like (5,3), or equal, like (42,42))
+
+* cols : same specs as rows. The order generated is a "relative" ordering of    
+    columns, THAT WILL BE USED TO NUMBER COLUMNS IN THE TABLE. 
+    (If cols=":" everywhere, the order of the files is kept.)
+
+* sep : column separator of the datafile.
+
+* comment : lines that begins by this will be discarded 
+    AND NOT COUNTED IN THE NUMBERING.
+
+########################## columns syntax ##########################
+
+columns = [
+    "column name 1", tablecolumn (relative n°, "format"),
+    "column name 2", [
+        "subcolumn name a" : tablecolumn (relative n°, "format"),
+        "subcolumn name b" : tablecolumn (relative n°, "format"),
+    ],
+    "column name 3", tablecolumn (relative n°, "format"),
+    ...
+    "column name n", [
+        "subcolumn name a" : tablecolumn (relative n°, "format"),
+        ...
+        "subcolumn name z" : tablecolumn (relative n°, "format"),
+    ],
+]
+
+A column is, by default, the concatenation of all data read in files.
+The user can eventually add a column with "custom" and plug forgotten data, 
+by calling tablecolumn(randomNumber, format, "custom", [row1, row2, ..., rowN])
+
+The relative order of columns defined by cols is used here.
+For instance, if file A contains variables a,b in columns 2 and 28,
+and file B contains variables a,b in columns 1 and 0 respectively,
+sources = [["path_to_A", rowsA, [2,28], sepA],
+           ["path_to_B", rowsB, [1, 0], sepB]]
+and the relative ordering is {a,b}, the relative number of a is 0
+and of b is 1. 
+
+"""

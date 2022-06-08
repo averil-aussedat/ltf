@@ -1,107 +1,115 @@
 #######################################################################################
 # Latex table formatter
-# Created by Averil Prost, may 2022
-# 
-# Input : 
-#   - a format file (.py) containing objects (see generic_format.py)
-#   - a data file (.txt or readable as)
-# 
-# The data file contains raw data from simulation
-# The format file describes how the table must be constructed from the data
-# 
-# Output : latex, in form of a terminal output & a .txt file 
-#
 #######################################################################################
 
 import numpy as np
-import sys
-import importlib
+from os import system
+from sys import argv
+from importlib import import_module
 
-verbose = False
-
-print("Welcome in latex table formatter.")
-print("Call this script with the following arguments : format_file data_file <output_file>")
-print("You may need to \\usepackage{multirow} if funny 2* appear in the head.")
+funcname = "latex_table_formatter"
+warn = "[%s] WARNING : " % (funcname)
 
 ####################################################################
 # Récupération des infos du format file
 
-args = sys.argv[1:]
-if (len(args)<2):
-    print("WARNING : Please provide a format_file and a data_file.")
+args = argv[1:]
+if (len(args)==0):
+    print(warn + "Please provide a format_file. Abort")
     exit (1)
-elif (len(args)==2):
+elif (len(args)==1):
     format_file_name = args[0].replace(".py","")
-    data_file_name = args[1]
-    output_file_name = "latex_table_output.txt"
-    print("Output will be placed in %s" % (output_file_name))
 else:
-    format_file_name = args[0].replace(".py","")
-    data_file_name = args[1]
-    output_file_name = args[2]
-    if ("." not in output_file_name):
-        output_file_name += ".txt"
+    print ("Too many arguments : ", args, ". Was expected a format file only.")
+    exit (1)
 
 try:
-    fmt = importlib.import_module(format_file_name)
-except:
-    print("WARNING : error opening format file '%s'. Abandon" % (format_file_name))
+    fmt = import_module(format_file_name)
+except Exception as e:
+    print(warn + "error opening format file '%s' : " % (format_file_name), e, ". Abort")
     exit (1)
 ####################################################################
 
 ####################################################################
 # Vérification que le format file est bien conforme
-try:
-    fmt.columns
-except:
-    print("WARNING : 'columns' not found in format file. Abandon")
-    exit (1)
 
-# more format check
-def recur_check (col, is_ok):
+# list of variables (just to check existence and type)
+variables = [] # syntax : name, is_mandatory, default, type
+variables.append (["sources", True, [], list])
+variables.append (["columns", True, [], list])
+variables.append (["caption", False, "", str])
+variables.append (["label", False, "", str])
+variables.append (["vertical_lines_inside_blocks", False, True, bool])
+variables.append (["double_hlines", False, [], bool])
+variables.append (["save_as_compilable_tex", False, False, bool])
+variables.append (["save_as_includable_tex", False, True, bool])
+variables.append (["generate_pdf", False, False, bool])
+variables.append (["print_in_terminal", False, False, bool])
+variables.append (["output_filename", False, "ltf_output", str])
+variables.append (["verbose", False, False, bool])
+
+for variable, is_mandatory, default, thetype in variables:
+    try:
+        thevar = getattr (fmt,variable)
+    except Exception as e:
+        if (is_mandatory):
+            print(warn + variable + " is mandatory. Abort")
+            exit(1)
+        else:
+            print("[%s] %s not found in format file : setting default " % (funcname, variable), default)
+            setattr(fmt,variable,default)
+        if thetype==bool: 
+            try:  
+               setattr(fmt,bool(thevar))
+            except Exception as e:
+                print(warn + "could not cast %s '" % variable, thevar, "' as bool (", e, "). Abort")
+                exit(1)
+        elif (type(thevar) is not thetype):
+            print(warn + variable + " is not of type ", thetype, " : ", thevar, ". Abort")
+            exit(1)
+
+# columns check
+def columns_format_check (col, is_ok):
     if (np.mod(len(col),2) != 0):
         is_ok = False
-        print("WARNING : uneven number of elements in a level of columns")
+        print(warn + "uneven number of elements in a level of columns")
     else:
         for ic, c in enumerate(col[1::2]):
             if ((type(col[2*ic]) is not str) or (not ((type(c) is list) or (type(c) is dict)))):
                 is_ok = False
-                print("WARNING : bad type in columns. Use strings for name and dicts/lists of columns for datas")
+                print(warn + "bad type in columns. Use strings for name and dicts/lists of columns for datas")
             if (is_ok and (type(c) is list)):
-                is_ok = recur_check (c, is_ok)
+                is_ok = columns_format_check (c, is_ok)
     return is_ok
 
-is_ok = recur_check (fmt.columns, True)
-if (not is_ok):
-    print("WARNING : 'columns' is not well formatted. Abandon")
+if (not columns_format_check (fmt.columns, True)):
+    print(warn + "'columns' is not well formatted. Abort")
     exit (1)
 if (len(fmt.columns)==0):
-    print("WARNING : empty 'columns'.")
+    print(warn + "empty 'columns'.")
+
+# sources check
+sourcesvars = [] # syntax : name, type
+sourcesvars.append(["filepath", str])
+sourcesvars.append(["rows", list])
+sourcesvars.append(["cols", list])
+sourcesvars.append(["sep", str])
 
 try:
-    fmt.caption
-except:
-    print("WARNING : 'caption' not found in format file. Add 'caption = \"mycaption\"' to format file if you want one.")
-    fmt.caption = ""
-
-try:
-    fmt.label
-except:
-    print("WARNING : 'label' not found in format file. Add 'label = \"mylabel\"' to format file if you want one.")
-    fmt.label = ""
-
-try:
-    fmt.datarows
-except:
-    print("WARNING : 'datarows' not found in format file. Taking default datarows=\":\".")
-    fmt.datarows = ":"
-
-try:
-    fmt.sep
-except:
-    print("WARNING : 'sep' not found in format file. Taking default sep=\":\". This may cause column discrimination error!")
-    fmt.sep = "\t"
+    for source in fmt.sources:
+        for ivar, sourcevar in enumerate(sourcesvars):
+            variable, thetype = sourcevar
+            if (type(source[ivar]) is not thetype):
+                print(warn + "sources contains invalid %s '" % variable, source[ivar], "'. Abort")
+                exit(1)
+except Exception as e:
+    print(warn + "error while checking sources : ", e, ". Abort")
+    exit(1)
 ####################################################################
+
+if (fmt.verbose): 
+    print("Welcome in %s." % funcname)
+    print("You may need to \\usepackage{multirow} if funny 2* appear in the head.")
 
 ####################################################################
 # Extraction des infos pratiques du format file
@@ -113,73 +121,97 @@ def recur_count (columns, ncols, nrows, current_row):
         elif type(c) is list:
             [ncols, nrows, current_row] = recur_count (c, ncols, nrows, current_row+1)
         else: 
-            print("WARNING : error in extracting infos from column. Please check format.")
+            print(warn + "error in extracting infos from column. Please check format.")
     return [ncols, nrows, current_row-1]
 
 [ncols, nrows, current_row] = recur_count (fmt.columns, 0, 1, 1)
 
 lines_head = [[] for _ in range(nrows)]
-lines_data = []
+rows_dict = []
 
-def recur_lines (columns, lines_head, lines_data, current_row, level_width, nrows):
+def recur_lines (columns, lines_head, rows_dict, current_row, level_width, nrows):
     for ic, c in enumerate(columns[1::2]):
         if type(c) is dict:
             # remplissage jusqu'au plancher de l'en-tête
             lines_head[current_row].append([columns[2*ic], nrows-current_row, 1])
             for irow in range(nrows-current_row-1):
                 lines_head[current_row+1+irow].append([]) # laisser du blanc
-            lines_data.append (c)
+            rows_dict.append (c)
             if (current_row > 0):
                 level_width[-2] += 1 # ajouter la largeur de cette colonne à celle du dessus
 
         else: # si (comme ?) le boulot de vérification a bien été fait, type(c)=list ici
-            [lines_head, lines_data, current_row, level_width] = recur_lines (c, lines_head, lines_data, current_row+1, level_width+[0], nrows)
+            [lines_head, rows_dict, current_row, level_width] = recur_lines (c, lines_head, rows_dict, current_row+1, level_width+[0], nrows)
             lines_head[current_row].append ([columns[2*ic], 1, level_width[-1]])
             if (current_row > 0):
                 level_width[-2] += level_width[-1] # ajouter la largeur de cette colonne à celle du dessus
                 level_width[-1] = 0 # passer à la colonne suivante
             else:
                 level_width = [0] # passer à la colonne principale suivante : remise à 0
-    return [lines_head, lines_data, current_row-1, level_width[:-1]]
+    return [lines_head, rows_dict, current_row-1, level_width[:-1]]
 
-[lines_head, lines_data, current_row, level_width] = recur_lines (fmt.columns, lines_head, lines_data, 0, [0], nrows)
+[lines_head, rows_dict, current_row, level_width] = recur_lines (fmt.columns, lines_head, rows_dict, 0, [0], nrows)
 ####################################################################
 
 ####################################################################
 # Récupération des données
-try:
-    datafile = open(data_file_name, "r")
-except:
-    print("WARNING : datafile %s not found. Abandon" % (data_file_name))
-    exit (1)
-datalines = datafile.readlines ()
-datafile.close ()
+def indices_to_list (indices, varname, minn, maxx):
+    """ minn included, maxx excluded """
+    res = []
+    for i in indices:
+        if type(i) is tuple:
+            [res.append(e) for e in np.arange(i[0],i[1]+1)]
+        elif type(i) is int:
+            res.append(i)
+        elif type(i) is str:
+            ii = (":"+i+":").split(":")
+            try:
+                ii[0] = minn   if (ii[0]=='') else int(ii[0])
+                ii[1] = maxx-1 if (ii[1]=='') else int(ii[1])
+            except Exception as e:
+                print(warn + varname + " contains invalid element ", i, " (", e, "). Abort")
+                exit(1)
+            [res.append(e) for e in np.arange(ii[0],ii[1]+1)]
+    res = [minn+np.mod(n-minn,maxx-minn) for n in res]
+    return res
 
-datalines = [[numstr.replace("\n","") for numstr in line.split(fmt.sep)] for line in datalines]
-datas = []
-for rawline in datalines:
-    line = []
-    for f in rawline:
-        try: # brutal, but very efficient
-            line.append(float(f))
-        except:
-            line.append(f)
-    datas.append(line)
+list_data_rows = [] # list of all the lines 
+for filepath,rows,cols,sep,comment in fmt.sources:
+    if (fmt.verbose):
+        print("[%s] Reading from %s" % (funcname, filepath))
+    real_row_counter = 0
+    with open(filepath, "r") as datafile:
+        rawlines = [rawline for rawline in datafile.readlines () if (len(rawline)>0 and rawline!=[""] and rawline[0]!=comment)]
+        rawlines = [[numstr.replace("\n","") for numstr in rawline.split(sep)] for rawline in rawlines]
+        rows = indices_to_list (rows, "rows", 0, len(rawlines))
+        rawlines = [rawlines[irow] for irow in rows]
+        for rawline in rawlines: 
+            linecols = indices_to_list (cols, "cols", 0, len(rawline)) 
+            rawline = [rawline[icol] for icol in linecols]
+            line = []
+            for f in rawline:
+                try: # brutal, but very efficient
+                    line.append(float(f))
+                except:
+                    line.append(f)
+            list_data_rows.append(line)
 
-# supprimer les éventuelles lignes vides
-datas = [line for line in datas if ((len(line)>0) and (line!=[""]))]
-lendatas = len(datas)
+lendatas = len(list_data_rows)
 
-if verbose:
-    print("datas : ", datas)
+if fmt.verbose:
+    print("list_data_rows : ", list_data_rows)
 ####################################################################
 
 ####################################################################
 ########## Coeur du script : construction de la table latex
 
-output = "\\begin{table}\n"
+output = "\\begin{table}[H]\n"
 output += "\t\\centering\n"
-output += "\t\\begin{tabular}{|" + "c|"*ncols + "} \\hline\n"
+if fmt.vertical_lines_inside_blocks:
+    colspec = "|"+"c|"*ncols
+else:
+    colspec = "|" + "|".join(["c"*cell[2] for cell in lines_head[0]]) + "|"
+output += "\t\\begin{tabular}{"+colspec+"} \\hline\n"
 
 ########## placement de l'en-tête
 for iline, line in enumerate(lines_head):
@@ -226,69 +258,33 @@ for iline, line in enumerate(lines_head):
 output += "\t\\hline \\hline \n" 
 
 ########## placement des données
-if (type(fmt.datarows) is str):
-    try:
-        rows_bounds = fmt.datarows.split(":")
-        if (len(rows_bounds) != 2):
-            print("WARNING : could not cast %s as valid datarows. Taking datarows=\":\" by default")
-            list_of_rows = range(lendatas)
-        else:
-            for irb in [0,1]:
-                if (rows_bounds[irb]==""):
-                    rows_bounds[irb] = 0
-                else:
-                    try:
-                        rows_bounds[irb] = int(rows_bounds[irb])
-                    except:
-                        print("WARNING : datarow[%d] = unknown thing %s. Taking 0 by default" % (irb, rows_bounds[irb]))
-                        rows_bounds[irb] = 0
-            list_of_rows = np.arange(rows_bounds[0], lendatas-rows_bounds[1], 1)
-            if (len(list_of_rows)==0):
-                print("WARNING : empty datarows.")
-    except:
-        print("WARNING : could not cast %s as valid datarows. Taking datarows=\":\" by default")
-        list_of_rows = range(lendatas)
-
-elif (type(fmt.datarows) is list):
-    list_of_rows = []
-    for i in fmt.datarows:
-        if type(i) is tuple:
-            if (np.min(i) < 0):
-                print("WARNING : datarows ask for line %d. May the user start line numbering from 0, please ?" % np.min(i))
-            elif (np.max(i) >= lendatas):
-                print("WARNING : datarows ask for line %d. Line numbering starts from 0 : clipping at %d by default" % (np.max(i), lendatas-1))
-            dalist = list(np.arange(np.max([0,np.min(i)]), np.min([np.max(i)+1, lendatas])))
-            if (i[0] <= i[1]):
-                list_of_rows += dalist
-            else:
-                list_of_rows += dalist[::-1]
-                
-        elif type(i) is int:
-            if (i < 0):
-                print("WARNING : datarows ask for line %d. May the user start line numbering from 0, please ?" % (i))
-            elif (i >= lendatas):
-                print("WARNING : datarows ask for line %d : clipping at %d by default (line numbering starts from 0)" % (i, lendatas-1))
-            list_of_rows.append(np.max([0,np.min([lendatas-1, i])]))
-        else:
-            print("WARNING : Unknown element ", i, " in datarows, ignored")
-else:
-    print("WARNING : unknown datarows type : ", type(fmt.datarows), "Please use list or 'a:b' string.")
-    list_of_rows = []
-
-for row in list_of_rows:
+for irow, therow in enumerate(list_data_rows):
     output += "\t"
-    for ic, c in enumerate (lines_data):
-        if (c["datacol"] >= len(datas[row])):
-            print("WARNING : format ask for column %d but datafile only have %d columns. Ignored" % (c["datacol"], len(datas[row])))
-        else:
+    for id, d in enumerate (rows_dict):
+        if (d["source"]=="file"):
+            if (d["datacol"] >= len(therow)):
+                print(warn + "asked for column %d but only %d in table. Abort" % (d["datacol"], len(therow)))
+                exit(1)
+            thevalue = therow[d["datacol"]]
+        elif (d["source"]=="custom"):
             try:
-                output += c["format"] % (datas[row][c["datacol"]])
-            except:
-                print("WARNING : format error. Expected was %s, received data " % (c["format"]), datas[row][c["datacol"]], " of type", type(datas[row][c["datacol"]]))
-        if (ic < ncols-1):
+                thevalue = d["data"][irow]
+            except Exception as e:
+                print("[%s] Error printing col %d of row %d (" % (funcname,id,irow), e, ". Abort")
+                exit(1)
+        else:
+            print("[%s] Unknown source '%s'. Abort" % (funcname, d["source"]))
+            exit(1)
+        try:
+            output += d["format"] % thevalue
+        except Exception as e:
+            print(warn + "format error (", e, "). Expected was %s, received " \
+                % (d["format"]), thevalue, " of type", type(thevalue))
+
+        if (id < ncols-1):
             output += " & "
         else:
-            output += " \\\\ \\hline \n"
+            output += " \\\\ \\hline " + ("\\hline" if irow in fmt.double_hlines else "") + "\n"
 
 ########## end of table
 output += "\t\\end{tabular}\n"
@@ -296,18 +292,43 @@ if (len(fmt.caption)>0):
     output += "\t\\caption{" + fmt.caption + "}\n"
 if (len(fmt.label)>0):
     output += "\t\\label{" + fmt.label + "}\n"
-output += "\\end{table}"
+output += "\\end{table}\n"
 ####################################################################
 
-print("\n")
-print(output)
-print("\n")
+####################################################################
+# Outputs
 
-output_file = open (output_file_name, "w")
-output_file.write (output)
-output_file.close ()
+if (fmt.save_as_compilable_tex or fmt.generate_pdf):
+    cmpfname = fmt.output_filename + ("" if ".tex" in fmt.output_filename else ".tex")
+    cmpfname = cmpfname[:-len(".tex")] + "_cmp.tex" # horrible, je sais
+    with open(cmpfname, "w") as thefile:
+        thefile.write ("\\documentclass{article}\n")
+        thefile.write ("\\usepackage[landscape]{geometry}\n")
+        thefile.write ("\\usepackage{multirow}\n")
+        thefile.write ("\\usepackage{float}\n")
+        thefile.write ("\\begin{document}\n")
+        thefile.write ("\\thispagestyle{empty}\n")
+        thefile.write (output)
+        thefile.write ("\\end{document}\n")
 
-print("Bye")
+if fmt.save_as_includable_tex:
+    fname = fmt.output_filename + ("" if ".tex" in fmt.output_filename else ".tex")
+    with open(fname, "w") as thefile:
+        thefile.write (output)
+
+if fmt.print_in_terminal:
+    print("\n")
+    print(output)
+    print("\n")
+
+if fmt.generate_pdf:
+    system ("pdflatex " + cmpfname)
+    system ("rm *.aux *.log")
+
+if fmt.verbose:
+    print("Bye")
+
 #######################################################################################
 #                                                                                 Fin #
 #######################################################################################
+
